@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Control — Hook Stickers</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f4f3ef;
+    --surface: #ffffff;
+    --border: #e2e0d8;
+    --text: #1a1a1a;
+    --muted: #888;
+    --low: #c0392b;
+    --low-bg: #fdf0ee;
+    --low-border: #f5c6c0;
+    --med: #d4870a;
+    --med-bg: #fef9ee;
+    --med-border: #fce6b0;
+    --high: #1e7e45;
+    --high-bg: #edf7f1;
+    --high-border: #b8e4c8;
+    --accent: #1a1a1a;
+  }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+  /* HEADER */
+  header { background: var(--text); color: #fff; padding: 0 2rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #888; display: inline-block; transition: background 0.3s; }
+  .status-dot.connected { background: #2ecc71; }
+  .status-text { font-size: 12px; color: #888; }
+  .last-update { font-size: 11px; color: #666; }
+
+  /* LOGIN */
+  #login-screen { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 56px); padding: 2rem; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 480px; }
+  .login-card h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  .login-card p { color: var(--muted); font-size: 13px; margin-bottom: 2rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 5px; }
+  .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; background: #fafaf8; transition: border 0.2s; }
+  .field input:focus { border-color: var(--text); background: #fff; }
+  .btn-primary { width: 100%; padding: 12px; background: var(--text); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 8px; transition: opacity 0.2s; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .login-error { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-top: 12px; display: none; }
+
+  /* DASHBOARD */
+  #dashboard { display: none; padding: 2rem; max-width: 1200px; margin: 0 auto; }
+
+  /* STATS */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px; }
+  .stat-val { font-size: 30px; font-weight: 600; line-height: 1; }
+  .stat-val.low { color: var(--low); }
+  .stat-val.med { color: var(--med); }
+  .stat-val.high { color: var(--high); }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* FILTERS */
+  .filters { display: flex; gap: 10px; margin-bottom: 1.5rem; align-items: center; flex-wrap: wrap; }
+  .search-input { flex: 1; min-width: 200px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; background: var(--surface); }
+  .search-input:focus { border-color: var(--text); }
+  .filter-btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; color: var(--text); transition: all 0.15s; white-space: nowrap; }
+  .filter-btn:hover { background: var(--bg); }
+  .filter-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .filter-btn.active.low { background: var(--low); border-color: var(--low); }
+  .filter-btn.active.med { background: var(--med); border-color: var(--med); }
+  .filter-btn.active.high { background: var(--high); border-color: var(--high); }
+  .refresh-btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; color: var(--muted); }
+  .refresh-btn:hover { background: var(--bg); }
+
+  /* SORT */
+  .sort-row { display: flex; gap: 8px; margin-bottom: 1rem; align-items: center; }
+  .sort-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .sort-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 11px; cursor: pointer; color: var(--muted); }
+  .sort-btn.active { background: var(--bg); color: var(--text); font-weight: 500; }
+
+  /* TABLE */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: #fafaf8; border-bottom: 1px solid var(--border); }
+  th { padding: 10px 16px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  td { padding: 13px 16px; border-bottom: 1px solid #f5f4f0; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafaf8; }
+
+  .product-name { font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sku { font-family: monospace; font-size: 11px; color: var(--muted); }
+  .stock-num { font-weight: 600; font-size: 15px; }
+
+  /* BADGES */
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-low { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+  .badge-med { background: var(--med-bg); color: var(--med); border: 1px solid var(--med-border); }
+  .badge-high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high-border); }
+  .badge-none { background: #f0f0f0; color: #999; border: 1px solid #e0e0e0; }
+
+  /* MINI BAR */
+  .mini-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .mini-bar { height: 6px; border-radius: 3px; background: #eee; overflow: hidden; width: 80px; flex-shrink: 0; }
+  .mini-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .fill-low { background: var(--low); }
+  .fill-med { background: var(--med); }
+  .fill-high { background: var(--high); }
+
+  /* PRODUCE */
+  .produce-val { font-weight: 600; font-size: 14px; }
+  .produce-sub { font-size: 11px; color: var(--muted); }
+
+  /* TREND */
+  .trend { font-size: 12px; }
+  .trend.up { color: var(--high); }
+  .trend.down { color: var(--low); }
+
+  /* EMPTY / LOADING */
+  .empty-row td { text-align: center; padding: 3rem; color: var(--muted); }
+  .loading-screen { text-align: center; padding: 4rem 2rem; color: var(--muted); }
+  .spinner { width: 28px; height: 28px; border: 2px solid #ddd; border-top-color: var(--text); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 1rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .col-right { text-align: right; }
+
+  @media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    #dashboard { padding: 1rem; }
+    .filters { gap: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="logo">Hook Stickers</span>
+    <span class="status-dot" id="status-dot"></span>
+    <span class="status-text" id="status-text">Sin conectar</span>
+  </div>
+  <span class="last-update" id="last-update"></span>
+</header>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <h2>Control de Stock</h2>
+    <p>Ingresá tus credenciales de Tienda Nube para comenzar.</p>
+    <div class="field">
+      <label>User ID</label>
+      <input type="text" id="uid" placeholder="ej: 4770234" value="4770234" />
+    </div>
+    <div class="field">
+      <label>Access Token</label>
+      <input type="password" id="tok" placeholder="tu token de API" />
+    </div>
+    <button class="btn-primary" id="btn-login" onclick="login()">Conectar y cargar datos</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total productos</div>
+      <div class="stat-val" id="s-total">—</div>
+      <div class="stat-sub" id="s-variants">variantes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Stock bajo</div>
+      <div class="stat-val low" id="s-low">—</div>
+      <div class="stat-sub">requieren producción urgente</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Stock medio</div>
+      <div class="stat-val med" id="s-med">—</div>
+      <div class="stat-sub">monitorear pronto</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Stock alto</div>
+      <div class="stat-val high" id="s-high">—</div>
+      <div class="stat-sub">sin urgencia</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input class="search-input" type="text" id="search" placeholder="Buscar producto o SKU..." oninput="applyFilters()" />
+    <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
+    <button class="filter-btn low" onclick="setFilter('low', this)">Bajo</button>
+    <button class="filter-btn med" onclick="setFilter('med', this)">Medio</button>
+    <button class="filter-btn high" onclick="setFilter('high', this)">Alto</button>
+    <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
+  </div>
+
+  <div class="sort-row">
+    <span class="sort-label">Ordenar por:</span>
+    <button class="sort-btn active" onclick="setSort('priority', this)">Prioridad</button>
+    <button class="sort-btn" onclick="setSort('name', this)">Nombre</button>
+    <button class="sort-btn" onclick="setSort('stock', this)">Stock</button>
+    <button class="sort-btn" onclick="setSort('sold30', this)">Ventas 30d</button>
+    <button class="sort-btn" onclick="setSort('produce', this)">A producir</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>SKU</th>
+          <th class="col-right">Stock actual</th>
+          <th class="col-right">Vendido 30d</th>
+          <th class="col-right">Vendido 3m</th>
+          <th>Nivel</th>
+          <th class="col-right">Producir</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let uid = '', tok = '';
+let allRows = [];
+let currentFilter = 'all';
+let currentSort = 'priority';
+
+async function login() {
+  uid = document.getElementById('uid').value.trim();
+  tok = document.getElementById('tok').value.trim();
+  if (!uid || !tok) return showLoginError('Completá los dos campos.');
+  document.getElementById('btn-login').disabled = true;
+  document.getElementById('btn-login').textContent = 'Cargando...';
+  hideLoginError();
+  await loadAll();
+}
+
+async function loadAll() {
+  showLoading();
+  try {
+    const [products, orders] = await Promise.all([fetchProducts(), fetchOrders()]);
+    allRows = processData(products, orders);
+    renderStats();
+    applyFilters();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('status-dot').className = 'status-dot connected';
+    document.getElementById('status-text').textContent = 'Conectado';
+    document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-AR');
+  } catch(e) {
+    showLoginError('Error: ' + e.message);
+    document.getElementById('btn-login').disabled = false;
+    document.getElementById('btn-login').textContent = 'Conectar y cargar datos';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+  }
+}
+
+function showLoading() {
+  document.getElementById('tbody').innerHTML = `<tr class="empty-row"><td colspan="7"><div class="loading-screen"><div class="spinner"></div>Cargando productos y ventas...</div></td></tr>`;
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('login-screen').style.display = 'none';
+}
+
+async function fetchProducts() {
+  const r = await fetch('/api/products', { headers: { 'x-user-id': uid, 'x-token': tok } });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function fetchOrders() {
+  const r = await fetch('/api/orders', { headers: { 'x-user-id': uid, 'x-token': tok } });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function processData(products, orders) {
+  const now = new Date();
+  const ago30 = new Date(now); ago30.setDate(ago30.getDate() - 30);
+  const ago90 = new Date(now); ago90.setDate(ago90.getDate() - 90);
+
+  // Build sales map by variant id
+  const sales30 = {}, sales90 = {};
+  for (const order of orders) {
+    const createdAt = new Date(order.created_at);
+    const in30 = createdAt >= ago30;
+    const in90 = createdAt >= ago90;
+    if (!in90) continue;
+    for (const item of (order.products || [])) {
+      const vid = item.variant_id;
+      if (!vid) continue;
+      if (in30) sales30[vid] = (sales30[vid] || 0) + item.quantity;
+      sales90[vid] = (sales90[vid] || 0) + item.quantity;
+    }
+  }
+
+  const rows = [];
+  for (const p of products) {
+    const name = p.name?.es || p.name?.pt || Object.values(p.name || {})[0] || 'Sin nombre';
+    for (const v of (p.variants || [])) {
+      const varLabel = v.values?.length ? v.values.map(x => x.es || Object.values(x)[0]).join(' / ') : '';
+      const fullName = varLabel ? `${name} — ${varLabel}` : name;
+      const stock = v.stock === null || v.stock === undefined ? null : Number(v.stock);
+      const s30 = sales30[v.id] || 0;
+      const s90 = sales90[v.id] || 0;
+
+      // Nivel
+      let level;
+      if (stock === null) {
+        level = 'none';
+      } else if (stock < 10 || (s30 > 0 && stock < s30)) {
+        level = 'low';
+      } else if (s30 > 0 && stock < s30 * 3) {
+        level = 'med';
+      } else if (s30 > 0 && stock >= s30 * 3) {
+        level = 'high';
+      } else if (s30 === 0 && stock >= 10) {
+        level = 'high';
+      } else {
+        level = 'low';
+      }
+
+      // Producir: ventas 3 meses + ventas último mes
+      const produce = stock !== null ? Math.max(0, (s90 + s30) - stock) : 0;
+
+      // Priority score for sorting (lower = more urgent)
+      let priority = level === 'low' ? 0 : level === 'med' ? 1 : level === 'high' ? 2 : 3;
+      if (level === 'low') priority = stock === 0 ? -1 : 0;
+
+      rows.push({ name: fullName, sku: v.sku || '—', stock, s30, s90, level, produce, priority, vid: v.id });
+    }
+  }
+  return rows;
+}
+
+function renderStats() {
+  const total = allRows.filter(r => r.stock !== null).length;
+  const low = allRows.filter(r => r.level === 'low').length;
+  const med = allRows.filter(r => r.level === 'med').length;
+  const high = allRows.filter(r => r.level === 'high').length;
+  document.getElementById('s-total').textContent = allRows.length;
+  document.getElementById('s-variants').textContent = `${total} con stock controlado`;
+  document.getElementById('s-low').textContent = low;
+  document.getElementById('s-med').textContent = med;
+  document.getElementById('s-high').textContent = high;
+}
+
+function applyFilters() {
+  const search = document.getElementById('search').value.toLowerCase();
+  let rows = allRows.filter(r => {
+    const matchSearch = r.name.toLowerCase().includes(search) || r.sku.toLowerCase().includes(search);
+    const matchFilter = currentFilter === 'all' || r.level === currentFilter;
+    return matchSearch && matchFilter;
+  });
+
+  // Sort
+  rows = rows.sort((a, b) => {
+    if (currentSort === 'priority') return a.priority - b.priority || (b.s30 - a.s30);
+    if (currentSort === 'name') return a.name.localeCompare(b.name);
+    if (currentSort === 'stock') return (a.stock ?? 9999) - (b.stock ?? 9999);
+    if (currentSort === 'sold30') return b.s30 - a.s30;
+    if (currentSort === 'produce') return b.produce - a.produce;
+    return 0;
+  });
+
+  renderTable(rows);
+}
+
+function renderTable(rows) {
+  if (!rows.length) {
+    document.getElementById('tbody').innerHTML = `<tr class="empty-row"><td colspan="7">No hay productos que coincidan.</td></tr>`;
+    return;
+  }
+
+  const html = rows.map(r => {
+    const stockStr = r.stock === null ? '∞' : r.stock;
+    const stockColor = r.level === 'low' ? 'color:var(--low)' : r.level === 'med' ? 'color:var(--med)' : '';
+
+    let badge, fillClass, barPct;
+    if (r.level === 'low') { badge = '<span class="badge badge-low">Bajo</span>'; fillClass = 'fill-low'; }
+    else if (r.level === 'med') { badge = '<span class="badge badge-med">Medio</span>'; fillClass = 'fill-med'; }
+    else if (r.level === 'high') { badge = '<span class="badge badge-high">Alto</span>'; fillClass = 'fill-high'; }
+    else { badge = '<span class="badge badge-none">Sin control</span>'; fillClass = ''; }
+
+    // Bar: stock vs 3x ventas 30d
+    const ref = r.s30 * 3 || 30;
+    barPct = r.stock === null ? 100 : Math.min(100, Math.round((r.stock / ref) * 100));
+
+    const produceStr = r.stock === null ? '—' : r.produce > 0 ? `<span class="produce-val">${r.produce}</span><div class="produce-sub">unidades</div>` : '<span style="color:var(--muted)">—</span>';
+
+    return `<tr>
+      <td><div class="product-name" title="${r.name}">${r.name}</div></td>
+      <td><span class="sku">${r.sku}</span></td>
+      <td class="col-right"><span class="stock-num" style="${stockColor}">${stockStr}</span></td>
+      <td class="col-right">${r.s30 || '—'}</td>
+      <td class="col-right">${r.s90 || '—'}</td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${badge}
+          ${r.stock !== null ? `<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-bar-fill ${fillClass}" style="width:${barPct}%"></div></div></div>` : ''}
+        </div>
+      </td>
+      <td class="col-right">${produceStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tbody').innerHTML = html;
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function setSort(s, btn) {
+  currentSort = s;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideLoginError() {
+  document.getElementById('login-error').style.display = 'none';
+}
+</script>
+</body>
+</html>
