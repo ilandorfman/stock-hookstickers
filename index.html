@@ -228,10 +228,25 @@ let allRows = [];
 let currentFilter = 'all';
 let currentSort = 'priority';
 
+// Load saved credentials
+window.addEventListener('DOMContentLoaded', () => {
+  const savedUid = localStorage.getItem('tn_uid');
+  const savedTok = localStorage.getItem('tn_tok');
+  if (savedUid) document.getElementById('uid').value = savedUid;
+  if (savedTok) document.getElementById('tok').value = savedTok;
+  if (savedUid && savedTok) {
+    uid = savedUid;
+    tok = savedTok;
+    loadAll();
+  }
+});
+
 async function login() {
   uid = document.getElementById('uid').value.trim();
   tok = document.getElementById('tok').value.trim();
   if (!uid || !tok) return showLoginError('Completá los dos campos.');
+  localStorage.setItem('tn_uid', uid);
+  localStorage.setItem('tn_tok', tok);
   document.getElementById('btn-login').disabled = true;
   document.getElementById('btn-login').textContent = 'Cargando...';
   hideLoginError();
