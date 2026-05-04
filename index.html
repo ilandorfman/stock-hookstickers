@@ -95,7 +95,8 @@
 
   /* BADGES */
   .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; }
-  .badge-low { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+  .badge-low-urgent { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+  .badge-low-minor { background: #fdf4ee; color: #b06000; border: 1px solid #f5d9b8; }
   .badge-med { background: var(--med-bg); color: var(--med); border: 1px solid var(--med-border); }
   .badge-high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high-border); }
   .badge-none { background: #f0f0f0; color: #999; border: 1px solid #e0e0e0; }
@@ -189,7 +190,8 @@
   <div class="filters">
     <input class="search-input" type="text" id="search" placeholder="Buscar producto o SKU..." oninput="applyFilters()" />
     <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
-    <button class="filter-btn low" onclick="setFilter('low', this)">Bajo</button>
+    <button class="filter-btn low" onclick="setFilter('low-urgent', this)">Bajo urgente</button>
+    <button class="filter-btn" style="border-color:#f5d9b8;color:#b06000" onclick="setFilter('low-minor', this)">Bajo menor</button>
     <button class="filter-btn med" onclick="setFilter('med', this)">Medio</button>
     <button class="filter-btn high" onclick="setFilter('high', this)">Alto</button>
     <button class="refresh-btn" onclick="loadAll()">↻ Actualizar</button>
@@ -312,9 +314,14 @@ function processData(products, orders) {
     }
   }
 
+  const EXCLUDED = ['gorra', 'gorro', 'gorra de lana', 'gorro de lana', 'tote bag', 'remera', 'piluso'];
+
   const rows = [];
   for (const p of products) {
     const name = p.name?.es || p.name?.pt || Object.values(p.name || {})[0] || 'Sin nombre';
+    const nameLower = name.toLowerCase();
+    if (EXCLUDED.some(ex => nameLower.includes(ex))) continue;
+
     for (const v of (p.variants || [])) {
       const varLabel = v.values?.length ? v.values.map(x => x.es || Object.values(x)[0]).join(' / ') : '';
       const fullName = varLabel ? `${name} — ${varLabel}` : name;
@@ -322,28 +329,35 @@ function processData(products, orders) {
       const s30 = sales30[v.id] || 0;
       const s90 = sales90[v.id] || 0;
 
+      if (s90 === 0) continue;
+
       // Nivel
       let level;
+      const isLow = stock !== null && (stock < 10 || (s30 > 0 && stock < s30));
+      const isMed = stock !== null && s30 > 0 && stock >= s30 && stock < s30 * 3;
+      const isHigh = stock !== null && (s30 > 0 ? stock >= s30 * 3 : stock >= 10);
+      const isImportant = s90 > 10 || s30 > 5;
+
       if (stock === null) {
         level = 'none';
-      } else if (stock < 10 || (s30 > 0 && stock < s30)) {
-        level = 'low';
-      } else if (s30 > 0 && stock < s30 * 3) {
+      } else if (isLow && isImportant) {
+        level = 'low-urgent';
+      } else if (isLow && !isImportant) {
+        level = 'low-minor';
+      } else if (isMed) {
         level = 'med';
-      } else if (s30 > 0 && stock >= s30 * 3) {
-        level = 'high';
-      } else if (s30 === 0 && stock >= 10) {
+      } else if (isHigh) {
         level = 'high';
       } else {
-        level = 'low';
+        level = 'low-minor';
       }
 
       // Producir: ventas 3 meses + ventas último mes
       const produce = stock !== null ? Math.max(0, (s90 + s30) - stock) : 0;
 
       // Priority score for sorting (lower = more urgent)
-      let priority = level === 'low' ? 0 : level === 'med' ? 1 : level === 'high' ? 2 : 3;
-      if (level === 'low') priority = stock === 0 ? -1 : 0;
+      let priority = level === 'low-urgent' ? 0 : level === 'low-minor' ? 1 : level === 'med' ? 2 : level === 'high' ? 3 : 4;
+      if (level === 'low-urgent') priority = stock === 0 ? -1 : 0;
 
       rows.push({ name: fullName, sku: v.sku || '—', stock, s30, s90, level, produce, priority, vid: v.id });
     }
@@ -353,7 +367,7 @@ function processData(products, orders) {
 
 function renderStats() {
   const total = allRows.filter(r => r.stock !== null).length;
-  const low = allRows.filter(r => r.level === 'low').length;
+  const low = allRows.filter(r => r.level === 'low-urgent' || r.level === 'low-minor').length;
   const med = allRows.filter(r => r.level === 'med').length;
   const high = allRows.filter(r => r.level === 'high').length;
   document.getElementById('s-total').textContent = allRows.length;
@@ -392,10 +406,11 @@ function renderTable(rows) {
 
   const html = rows.map(r => {
     const stockStr = r.stock === null ? '∞' : r.stock;
-    const stockColor = r.level === 'low' ? 'color:var(--low)' : r.level === 'med' ? 'color:var(--med)' : '';
+    const stockColor = (r.level === 'low-urgent' || r.level === 'low-minor') ? 'color:var(--low)' : r.level === 'med' ? 'color:var(--med)' : '';
 
     let badge, fillClass, barPct;
-    if (r.level === 'low') { badge = '<span class="badge badge-low">Bajo</span>'; fillClass = 'fill-low'; }
+    if (r.level === 'low-urgent') { badge = '<span class="badge badge-low-urgent">Bajo urgente</span>'; fillClass = 'fill-low'; }
+    else if (r.level === 'low-minor') { badge = '<span class="badge badge-low-minor">Bajo menor</span>'; fillClass = 'fill-low'; }
     else if (r.level === 'med') { badge = '<span class="badge badge-med">Medio</span>'; fillClass = 'fill-med'; }
     else if (r.level === 'high') { badge = '<span class="badge badge-high">Alto</span>'; fillClass = 'fill-high'; }
     else { badge = '<span class="badge badge-none">Sin control</span>'; fillClass = ''; }
